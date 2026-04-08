@@ -8,6 +8,13 @@
     runner_dir: "/home/runner/actions-runner"
     github_repo: "abreiss/ansible-vagrant-learn"
 
+  handlers:
+    - name: Restart runner service
+      systemd:
+        name: "{{ runner_service_name.stdout }}"
+        state: restarted
+        daemon_reload: yes
+
   tasks:
     - name: Install dependencies
       apt:
@@ -44,6 +51,8 @@
         remote_src: yes
         owner: "{{ runner_user }}"
         group: "{{ runner_user }}"
+        creates: "{{ runner_dir }}/run.sh"
+      notify: Restart runner service
 
     - name: Configure runner
       command: >
@@ -55,14 +64,23 @@
         --labels vagrant
       args:
         chdir: "{{ runner_dir }}"
+        creates: "{{ runner_dir }}/.runner"
       become_user: "{{ runner_user }}"
 
     - name: Install runner service
       command: ./svc.sh install {{ runner_user }}
       args:
         chdir: "{{ runner_dir }}"
+        creates: "{{ runner_dir }}/.service"
 
-    - name: Start runner service
-      command: ./svc.sh start
-      args:
-        chdir: "{{ runner_dir }}"
+    - name: Read runner service name
+      command: cat "{{ runner_dir }}/.service"
+      register: runner_service_name
+      changed_when: false
+
+    - name: Start and enable runner service
+      systemd:
+        name: "{{ runner_service_name.stdout }}"
+        state: started
+        enabled: yes
+        daemon_reload: yes
