@@ -97,7 +97,7 @@
         name:
           - curl
           - tar
-          - libicu-dev
+          - libicu70
           - acl
         state: present
         update_cache: true
