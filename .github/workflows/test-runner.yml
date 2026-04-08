@@ -1,0 +1,19 @@
+name: Test Self-Hosted Runner
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [self-hosted, vagrant]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System info
+        run: |
+          echo "Hello from self-hosted runner!"
+          uname -a
+          whoami
+          hostname

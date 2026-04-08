@@ -1,0 +1,68 @@
+---
+- name: Install GitHub Actions self-hosted runner
+  hosts: all
+  become: yes
+  vars:
+    runner_version: "2.333.1"
+    runner_user: "runner"
+    runner_dir: "/home/runner/actions-runner"
+    github_repo: "abreiss/ansible-vagrant-learn"
+
+  tasks:
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - tar
+          - libicu-dev
+          - acl
+        state: present
+        update_cache: yes
+
+    - name: Create runner user
+      user:
+        name: "{{ runner_user }}"
+        shell: /bin/bash
+        create_home: yes
+
+    - name: Create runner directory
+      file:
+        path: "{{ runner_dir }}"
+        state: directory
+        owner: "{{ runner_user }}"
+        group: "{{ runner_user }}"
+
+    - name: Download runner package
+      get_url:
+        url: "https://github.com/actions/runner/releases/download/v{{ runner_version }}/actions-runner-linux-arm64-{{ runner_version }}.tar.gz"
+        dest: "/tmp/actions-runner.tar.gz"
+
+    - name: Extract runner package
+      unarchive:
+        src: "/tmp/actions-runner.tar.gz"
+        dest: "{{ runner_dir }}"
+        remote_src: yes
+        owner: "{{ runner_user }}"
+        group: "{{ runner_user }}"
+
+    - name: Configure runner
+      command: >
+        ./config.sh
+        --url https://github.com/{{ github_repo }}
+        --token {{ runner_token }}
+        --unattended
+        --name vagrant-runner
+        --labels vagrant
+      args:
+        chdir: "{{ runner_dir }}"
+      become_user: "{{ runner_user }}"
+
+    - name: Install runner service
+      command: ./svc.sh install {{ runner_user }}
+      args:
+        chdir: "{{ runner_dir }}"
+
+    - name: Start runner service
+      command: ./svc.sh start
+      args:
+        chdir: "{{ runner_dir }}"
