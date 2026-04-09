@@ -8,18 +8,20 @@
     key_name: github-runner-key
     security_group_name: github-runner-sg
     instance_name: github-runner
-    github_repo: "abreiss/ansible-vagrant-learn"
 
   tasks:
     - name: Generate SSH key pair
-      command: ssh-keygen -t rsa -b 4096 -f ./{{ key_name }} -N ""
-      args:
-        creates: "./{{ key_name }}"
+      community.crypto.openssh_keypair:
+        path: "./{{ key_name }}"
+        type: rsa
+        size: 4096
+        force: false
+      register: ssh_keypair
 
     - name: Import public key to AWS
       amazon.aws.ec2_key:
         name: "{{ key_name }}"
-        key_material: "{{ lookup('file', './' + key_name + '.pub') }}"
+        key_material: "{{ ssh_keypair.public_key }}"
         region: "{{ aws_region }}"
 
     - name: Create security group
@@ -60,7 +62,7 @@
       register: ec2
 
     - name: Add EC2 instance to dynamic inventory
-      add_host:
+      ansible.builtin.add_host:
         hostname: "{{ ec2.instances[0].public_ip_address }}"
         groups: ec2_runners
         ansible_user: ubuntu
@@ -68,7 +70,7 @@
         ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
 
     - name: Wait for SSH to become available
-      wait_for:
+      ansible.builtin.wait_for:
         host: "{{ ec2.instances[0].public_ip_address }}"
         port: 22
         delay: 10
@@ -82,18 +84,20 @@
     runner_version: "2.333.1"
     runner_user: runner
     runner_dir: /home/runner/actions-runner
-    github_repo: "abreiss/ansible-vagrant-learn"
+    # To enable download verification, pass via extra vars:
+    # -e runner_checksum="sha256:<hash>"
+    # Hashes are listed at: https://github.com/actions/runner/releases/tag/v{{ runner_version }}
 
   handlers:
     - name: Restart runner service
-      systemd:
-        name: "{{ runner_service_name.stdout }}"
+      ansible.builtin.systemd:
+        name: "{{ runner_service_file.content | b64decode | trim }}"
         state: restarted
         daemon_reload: true
 
   tasks:
     - name: Install dependencies
-      apt:
+      ansible.builtin.apt:
         name:
           - curl
           - tar
@@ -103,25 +107,26 @@
         update_cache: true
 
     - name: Create runner user
-      user:
+      ansible.builtin.user:
         name: "{{ runner_user }}"
         shell: /bin/bash
         create_home: true
 
     - name: Create runner directory
-      file:
+      ansible.builtin.file:
         path: "{{ runner_dir }}"
         state: directory
         owner: "{{ runner_user }}"
         group: "{{ runner_user }}"
 
     - name: Download runner package
-      get_url:
+      ansible.builtin.get_url:
         url: "https://github.com/actions/runner/releases/download/v{{ runner_version }}/actions-runner-linux-x64-{{ runner_version }}.tar.gz"
         dest: /tmp/actions-runner.tar.gz
+        checksum: "{{ runner_checksum | default(omit) }}"
 
     - name: Extract runner package
-      unarchive:
+      ansible.builtin.unarchive:
         src: /tmp/actions-runner.tar.gz
         dest: "{{ runner_dir }}"
         remote_src: true
@@ -131,7 +136,7 @@
       notify: Restart runner service
 
     - name: Configure runner
-      command: >
+      ansible.builtin.command: >
         ./config.sh
         --url https://github.com/{{ github_repo }}
         --token {{ runner_token }}
@@ -142,21 +147,22 @@
         chdir: "{{ runner_dir }}"
         creates: "{{ runner_dir }}/.runner"
       become_user: "{{ runner_user }}"
+      no_log: true
 
     - name: Install runner service
-      command: ./svc.sh install {{ runner_user }}
+      ansible.builtin.command: ./svc.sh install {{ runner_user }}
       args:
         chdir: "{{ runner_dir }}"
         creates: "{{ runner_dir }}/.service"
 
     - name: Read runner service name
-      command: cat "{{ runner_dir }}/.service"
-      register: runner_service_name
-      changed_when: false
+      ansible.builtin.slurp:
+        src: "{{ runner_dir }}/.service"
+      register: runner_service_file
 
     - name: Start and enable runner service
-      systemd:
-        name: "{{ runner_service_name.stdout }}"
+      ansible.builtin.systemd:
+        name: "{{ runner_service_file.content | b64decode | trim }}"
         state: started
         enabled: true
         daemon_reload: true

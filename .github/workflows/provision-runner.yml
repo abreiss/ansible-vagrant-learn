@@ -3,16 +3,26 @@ name: Provision EC2 Runner
 on:
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   provision:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::963275461108:role/github-actions-runner
+          aws-region: us-east-1
+
       - name: Install Ansible and dependencies
         run: |
           pip install ansible boto3 botocore
-          ansible-galaxy collection install amazon.aws
+          ansible-galaxy collection install amazon.aws community.crypto
 
       - name: Write SSH private key
         run: |
@@ -21,9 +31,4 @@ jobs:
           ssh-keygen -y -f github-runner-key > github-runner-key.pub
 
       - name: Run provisioning playbook
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
         run: ansible-playbook playbook.yml -e runner_token=${{ secrets.RUNNER_TOKEN }}
