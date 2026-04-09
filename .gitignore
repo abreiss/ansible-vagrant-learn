@@ -1,3 +1,11 @@
 .vagrant/
+.claude/
 github-runner-key
 github-runner-key.pub
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+*.tfvars

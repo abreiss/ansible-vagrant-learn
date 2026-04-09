@@ -1,89 +1,13 @@
 ---
-- name: Provision EC2 instance
-  hosts: localhost
-  gather_facts: false
-  vars:
-    aws_region: us-east-1
-    instance_type: t2.micro
-    key_name: github-runner-key
-    security_group_name: github-runner-sg
-    instance_name: github-runner
-
-  tasks:
-    - name: Generate SSH key pair
-      community.crypto.openssh_keypair:
-        path: "./{{ key_name }}"
-        type: rsa
-        size: 4096
-        force: false
-      register: ssh_keypair
-
-    - name: Import public key to AWS
-      amazon.aws.ec2_key:
-        name: "{{ key_name }}"
-        key_material: "{{ ssh_keypair.public_key }}"
-        region: "{{ aws_region }}"
-
-    - name: Create security group
-      amazon.aws.ec2_security_group:
-        name: "{{ security_group_name }}"
-        description: Security group for GitHub Actions runner
-        region: "{{ aws_region }}"
-        rules:
-          - proto: tcp
-            ports: [22]
-            cidr_ip: 0.0.0.0/0
-        rules_egress:
-          - proto: all
-            cidr_ip: 0.0.0.0/0
-
-    - name: Get latest Ubuntu 22.04 x86_64 AMI
-      amazon.aws.ec2_ami_info:
-        region: "{{ aws_region }}"
-        owners: ["099720109477"]
-        filters:
-          name: "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
-          architecture: x86_64
-          state: available
-      register: ubuntu_amis
-
-    - name: Launch EC2 instance
-      amazon.aws.ec2_instance:
-        name: "{{ instance_name }}"
-        region: "{{ aws_region }}"
-        instance_type: "{{ instance_type }}"
-        image_id: "{{ (ubuntu_amis.images | sort(attribute='creation_date') | last).image_id }}"
-        key_name: "{{ key_name }}"
-        security_groups: ["{{ security_group_name }}"]
-        state: running
-        wait: true
-        tags:
-          Name: "{{ instance_name }}"
-      register: ec2
-
-    - name: Add EC2 instance to dynamic inventory
-      ansible.builtin.add_host:
-        hostname: "{{ ec2.instances[0].public_ip_address }}"
-        groups: ec2_runners
-        ansible_user: ubuntu
-        ansible_ssh_private_key_file: "./{{ key_name }}"
-        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
-
-    - name: Wait for SSH to become available
-      ansible.builtin.wait_for:
-        host: "{{ ec2.instances[0].public_ip_address }}"
-        port: 22
-        delay: 10
-        timeout: 120
-
-
 - name: Install GitHub Actions self-hosted runner
-  hosts: ec2_runners
+  hosts: all
   become: true
   vars:
     runner_version: "2.333.1"
     runner_user: runner
     runner_dir: /home/runner/actions-runner
+    runner_name: ec2-runner
+    runner_labels: ec2
     # To enable download verification, pass via extra vars:
     # -e runner_checksum="sha256:<hash>"
     # Hashes are listed at: https://github.com/actions/runner/releases/tag/v{{ runner_version }}
@@ -141,8 +65,8 @@
         --url https://github.com/{{ github_repo }}
         --token {{ runner_token }}
         --unattended
-        --name ec2-runner
-        --labels ec2
+        --name {{ runner_name }}
+        --labels {{ runner_labels }}
       args:
         chdir: "{{ runner_dir }}"
         creates: "{{ runner_dir }}/.runner"

@@ -5,6 +5,11 @@
       "source": "personamanagmentlayer/pcl",
       "sourceType": "github",
       "computedHash": "759e47e88c3a04f2645fac14e5f3f0c28e6e0322ad2e531d57d230ab18fac926"
+    },
+    "terraform-style-guide": {
+      "source": "hashicorp/agent-skills",
+      "sourceType": "github",
+      "computedHash": "1fb650e4627c740f024b80947964769f5f5d58efff54870cef2791324d5aa451"
     }
   }
 }

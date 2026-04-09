@@ -19,16 +19,28 @@ jobs:
           role-to-assume: arn:aws:iam::963275461108:role/github-actions-runner
           aws-region: us-east-1
 
-      - name: Install Ansible and dependencies
+      - name: Generate SSH key pair
         run: |
-          pip install ansible boto3 botocore
-          ansible-galaxy collection install amazon.aws community.crypto
-
-      - name: Write SSH private key
-        run: |
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > github-runner-key
+          ssh-keygen -t rsa -b 4096 -f github-runner-key -N ""
           chmod 600 github-runner-key
-          ssh-keygen -y -f github-runner-key > github-runner-key.pub
 
-      - name: Run provisioning playbook
-        run: ansible-playbook playbook.yml -e runner_token=${{ secrets.RUNNER_TOKEN }}
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: |
+          SSH_KEY_PATH="$(realpath ../github-runner-key)"
+          terraform apply -auto-approve \
+            -var="ssh_public_key=$(cat ../github-runner-key.pub)" \
+            -var="ssh_private_key_path=${SSH_KEY_PATH}" \
+            -var="runner_token=${{ secrets.RUNNER_TOKEN }}"
